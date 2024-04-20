@@ -1,411 +1,365 @@
-import math
-import urllib.request as urllib
-from html import escape
-from io import BytesIO
-from urllib.error import HTTPError
+import os
+from asyncio import gather
+from random import choice
+from traceback import format_exc
 
-from PIL import Image
-from MukeshRobot import (InlineKeyboardButton, InlineKeyboardMarkup, ParseMode,
-                      TelegramError, Update)
-from MukeshRobot.ext import CallbackContext
-from MukeshRobot.utils.helpers import mention_html
-from MukeshRobot.modules.helper_funcs.decorators import zaid
+from pyrogram.errors import (PeerIdInvalid, ShortnameOccupyFailed,
+                             StickerEmojiInvalid, StickerPngDimensions,
+                             StickerPngNopng, StickerTgsNotgs,
+                             StickerVideoNowebm, UserIsBlocked)
+from pyrogram.types import InlineKeyboardButton as IKB
+from pyrogram.types import InlineKeyboardMarkup as IKM
+from pyrogram.types import Message
+
+from MukeshRobot import LOGGER
+from MukeshRobot.bot_class import Gojo
+from MukeshRobot.utils.custom_filters import command
+from MukeshRobot.utils.sticker_help import *
+from MukeshRobot.utils.web_helpers import get_file_size
+from MukeshRobot.vars import Config
 
 
-@zaid(command='stickerid')
-def stickerid(update: Update, context: CallbackContext):
-    msg = update.effective_message
-    if msg.reply_to_message and msg.reply_to_message.sticker:
-        update.effective_message.reply_text(
-            "Hello "
-            + f"{mention_html(msg.from_user.id, msg.from_user.first_name)}"
-            + ", The sticker id you are replying is :\n <code>"
-            + escape(msg.reply_to_message.sticker.file_id)
-            + "</code>",
-            parse_mode=ParseMode.HTML,
-        )
+@Gojo.on_message(command(["stickerinfo","stinfo"]))
+async def give_st_info(c: Gojo , m: Message):
+    if not m.reply_to_message:
+        await m.reply_text("Reply to a sticker")
+        return
+    elif not m.reply_to_message.sticker:
+        await m.reply_text("Reply to a sticker")
+        return
+    st_in = m.reply_to_message.sticker
+    st_type = "Normal"
+    if st_in.is_animated:
+        st_type = "Animated"
+    elif st_in.is_video:
+        st_type = "Video"
+    st_to_gib = f"""[Sticker]({m.reply_to_message.link}) info:
+File ID : `{st_in.file_id}`
+File name : {st_in.file_name}
+File unique ID : `{st_in.file_unique_id}`
+Date and time sticker created : `{st_in.date}`
+Sticker type : `{st_type}`
+Emoji : {st_in.emoji}
+Pack name : {st_in.set_name}
+"""
+    kb = IKM([[IKB("➕ Add sticker to pack", url=f"https://t.me/addstickers/{st_in.set_name}")]])
+    await m.reply_text(st_to_gib,reply_markup=kb)
+    return
+
+@Gojo.on_message(command(["stickerid","stid"]))
+async def sticker_id_gib(c: Gojo, m: Message):
+    if not m.reply_to_message:
+        await m.reply_text("Reply to a sticker")
+        return
+    elif not m.reply_to_message.sticker:
+        await m.reply_text("Reply to a sticker")
+        return
+    st_in = m.reply_to_message.sticker
+    await m.reply_text(f"Sticker id: `{st_in.file_id}`\nSticker unique ID : `{st_in.file_unique_id}`")
+    return
+
+
+@Gojo.on_message(command(["kang", "steal"]))
+async def kang(c:Gojo, m: Message):
+    if not m.reply_to_message:
+        return await m.reply_text("Reply to a sticker or image to kang it.")
+    elif not (m.reply_to_message.animation or m.reply_to_message.sticker or m.reply_to_message.photo or (m.reply_to_message.document and m.reply_to_message.document.mime_type.split("/")[0]in["image","video"])):
+        return await m.reply_text("Reply to a sticker or image to kang it.")
+    if not m.from_user:
+        return await m.reply_text("You are anon admin, kang stickers in my pm.")
+    msg = await m.reply_text("Kanging Sticker..")
+    is_requ = False
+    if m.reply_to_message.sticker:
+        if m.reply_to_message.sticker.is_animated or m.reply_to_message.sticker.is_video:
+            is_requ = True
+    # Find the proper emoji
+    args = m.text.split()
+    if len(args) > 1:
+        sticker_emoji = str(args[1])
+    elif m.reply_to_message.sticker:
+        try:
+          sticker_emoji = m.reply_to_message.sticker.emoji
+        except Exception:
+          ran = ["🤣", "😑", "😁", "👍", "🔥", "🙈", "🙏", "😍", "😘", "😱", "☺️", "🙃", "😌", "🤧", "😐", "😬", "🤩", "😀", "🙂", "🥹", "🥺", "🫥", "🙄", "🫡", "🫠", "🤫", "😓", "🥵", "🥶", "😤", "😡", "🤬", "🤯", "🥴", "🤢", "🤮", "💀", "🗿", "💩", "🤡", "🫶", "🙌", "👐", "✊", "👎", "🫰", "🤌", "👌", "👀", "💃", "🕺", "👩‍❤️‍💋‍👩", "👩‍❤️‍💋‍👨","👨‍❤️‍👨", "💑", "👩‍❤️‍👩", "👩‍❤️‍👨", "💏", "👨‍❤️‍💋‍👨", "😪", "😴", "😭", "🥸", "🤓", "🫤", "😮", "😧", "😲", "🥱", "😈", "👿", "🤖", "👾", "🙌", "🥴", "🥰", "😇", "🤣" ,"😂", "😜", "😎"]
+          sticker_emoji = choice(ran)
     else:
-        update.effective_message.reply_text(
-            "Hello "
-            + f"{mention_html(msg.from_user.id, msg.from_user.first_name)}"
-            + ", Please reply to sticker message to get id sticker",
-            parse_mode=ParseMode.HTML,
-        )
+        edit = await msg.reply_text("No emoji provided choosing a random emoji")
+        ran = ["🤣", "😑", "😁", "👍", "🔥", "🙈", "🙏", "😍", "😘", "😱", "☺️", "🙃", "😌", "🤧", "😐", "😬", "🤩", "😀", "🙂", "🥹", "🥺", "🫥", "🙄", "🫡", "🫠", "🤫", "😓", "🥵", "🥶", "😤", "😡", "🤬", "🤯", "🥴", "🤢", "🤮", "💀", "🗿", "💩", "🤡", "🫶", "🙌", "👐", "✊", "👎", "🫰", "🤌", "👌", "👀", "💃", "🕺", "👩‍❤️‍💋‍👩", "👩‍❤️‍💋‍👨","👨‍❤️‍👨", "💑", "👩‍❤️‍👩", "👩‍❤️‍👨", "💏", "👨‍❤️‍💋‍👨", "😪", "😴", "😭", "🥸", "🤓", "🫤", "😮", "😧", "😲", "🥱", "😈", "👿", "🤖", "👾", "🙌", "🥴", "🥰", "😇", "🤣" ,"😂", "😜", "😎"]
+        sticker_emoji = choice(ran)
+        await edit.delete()
+    await msg.edit_text(f"Makeing a sticker with {sticker_emoji} emoji")
 
-
-@zaid(command='getsticker')
-def getsticker(update: Update, context: CallbackContext):
-    bot = context.bot
-    msg = update.effective_message
-    chat_id = update.effective_chat.id
-    if msg.reply_to_message and msg.reply_to_message.sticker:
-        file_id = msg.reply_to_message.sticker.file_id
-        # Check if it's an animated file
-        is_animated = msg.reply_to_message.sticker.is_animated
-        # Get the file and put it into a memory buffer
-        new_file = bot.get_file(file_id)
-        sticker_data = new_file.download(out=BytesIO())
-        # go back to the start of the buffer
-        sticker_data.seek(0)
-        # Reply with the document. Telegram INSISTS on making anything
-        # that ends in .tgs become an animated sticker so we'll have to
-        # rename it to something the user should know how to handle.
-        filename = "sticker.png"
-        if is_animated:
-            filename = "animated_sticker.tgs.rename_me"
-        # Send the document
-        bot.send_document(chat_id,
-            document=sticker_data,
-            filename=filename,
-            disable_content_type_detection=True
-        )
-    else:
-        update.effective_message.reply_text(
-            "Please reply to a sticker for me to upload its PNG."
-        )
-
-
-@zaid(command=["steal", "kang"])
-def kang(update: Update, context: CallbackContext):  # sourcery no-metrics
-    global ppref
-    msg = update.effective_message
-    user = update.effective_user
-    args = context.args
-    is_animated = False
-    is_video = False
-    file_id = None
-    sticker_emoji = "🤔"
-    sticker_data = None
-
-    # The kang syntax is as follows:
-    # /kang 🤔 <as reply to document>
-    # /kang http://whatever.com/sticker.png 🤔
-    # It can be animated or not.
-
-    # first check if we're syntactically correct.
-    if not msg.reply_to_message and not args:
-        # this is quite a bit more difficult, we need to get all their packs managed by us.
-        packs = ""
-        # start with finding non-animated packs.
-        packnum = 0
-        # Initial pack name for non-animated
-        packname = f"a{user.id}_by_{context.bot.username}"
-        # Max non-animated stickers in a pack
-        max_stickers = 120
-
-        # Find the packs
-        while True:
-            last_set = False
-            try:
-                stickerset = context.bot.get_sticker_set(packname)
-                if len(stickerset.stickers) >= max_stickers:
-                    packnum += 1
-                    if is_animated:
-                        packname = f"animated{packnum}_{user.id}_by_{context.bot.username}"
-                        ppref = "animated"
-                    elif is_video:
-                        packname = f"vid{packnum}_{user.id}_by_{context.bot.username}"
-                        ppref = "vid"
-                    else:
-                        packname = f"a{packnum}_{user.id}_by_{context.bot.username}"
-                        ppref = ""
-                else:
-                    last_set = True
-                packs += f"[{ppref}pack{packnum if packnum != 0 else ''}](t.me/addstickers/{packname})\n"
-            except TelegramError as e:
-                if e.message == "Stickerset_invalid":
-                    last_set = True
-                else:
-                    print(e)
-                    break  # something went wrong, leave the loop and send what we have.
-
-            # If we're done checking bot animated and non-animated packs
-            # exit the loop and send our pack message.
-            if last_set and is_animated:
-                break
-            elif last_set:
-                # move to checking animated packs. Start with the first pack
-                packname = f"animated_{user.id}_by_{context.bot.username}"
-                # reset our counter
-                packnum = 0
-                # Animated packs have a max of 50 stickers
-                max_stickers = 50
-                # tell the loop we're looking at animated stickers now
-                is_animated = True
-
-        # if they have no packs, change our message
-        if not packs:
-            packs = "Looks like you don't have any packs! Please reply to a sticker, or image to kang it and create a new pack!"
+    # Get the corresponding fileid, resize the file if necessary
+    try:
+        if is_requ or m.reply_to_message.animation or m.reply_to_message.video or m.reply_to_message.photo or (m.reply_to_message.document and m.reply_to_message.document.mime_type.split("/")[0] in ["video","image"]):
+            # telegram doesn't allow animated and video sticker to be kanged as we do for normal stickers
+            if m.reply_to_message.animation or m.reply_to_message.video or (m.reply_to_message.document and m.reply_to_message.document.mime_type.split("/")[0] == "video"):
+                path = await Vsticker(c, m.reply_to_message)
+                SIZE = os.path.getsize(path)
+                if SIZE > 261120:
+                    await m.reply_text("File is too big")
+                    os.remove(path)
+                    return
+            elif is_requ:
+                path = await m.reply_to_message.download() 
+            else:
+                sizee = (await get_file_size(m.reply_to_message)).split()
+                if (sizee[1] == "mb" and int(sizee[0]) > 10) or sizee[1] == "gb":
+                    await m.reply_text("File size is too big")
+                    return
+                path = await m.reply_to_message.download()
+                path = await resize_file_to_sticker_size(path)
+            sticker = await create_sticker(
+                await upload_document(
+                    c, path, m.chat.id
+                ),
+                sticker_emoji
+            )
+            os.remove(path)
+        elif m.reply_to_message.sticker and not is_requ:
+            sticker = await create_sticker(
+                await get_document_from_file_id(
+                    m.reply_to_message.sticker.file_id
+                ),
+                sticker_emoji
+            )
         else:
-            packs = "Please reply to a sticker, or image to kang it!\nOh, by the way, here are your packs:\n" + packs
-
-        # Send our list as a reply
-        msg.reply_text(packs, parse_mode=ParseMode.MARKDOWN)
-        # Don't continue processing the command.
+          await m.reply_text("Unsupported media file...")
+          return
+    except ShortnameOccupyFailed:
+        await m.reply_text("Change Your Name Or Username")
         return
 
-    # User sent /kang in reply to a message
-    if rep := msg.reply_to_message:
-        if rep.sticker:
-            is_animated = rep.sticker.is_animated
-            is_video = rep.sticker.is_video
-            file_id = rep.sticker.file_id
-            # also grab the emoji if the user wishes
-            if not args:
-                sticker_emoji = rep.sticker.emoji
-        elif rep.photo:
-            file_id = rep.photo[-1].file_id
-        elif rep.video:
-            file_id = rep.video.file_id
-            is_video = True
-        elif rep.animation:
-            file_id = rep.animation.file_id
-            is_video = True
-        elif doc := rep.document:
-            file_id = rep.document.file_id
-            if doc.mime_type == 'video/webm':
-                is_video = True
-        else:
-            msg.reply_text("Yea, I can't steal that.")
-            return
+    except Exception as e:
+        await m.reply_text(str(e))
+        e = format_exc()
+        LOGGER.error(e)
+        LOGGER.error(format_exc())
 
-        # Check if they have an emoji specified.
-        if args:
-            sticker_emoji = args[0]
-
-        # Download the data
-        kang_file = context.bot.get_file(file_id)
-        sticker_data = kang_file.download(out=BytesIO())
-        # move to the front of the buffer.
-        sticker_data.seek(0)
-    else:  # user sent /kang with url
-        url = args[0]
-        # set the emoji if they specify it.
-        if len(args) >= 2:
-            sticker_emoji = args[1]
-        # open the URL, downlaod the image and write to
-        # a buffer object we can use elsewhere.
-        sticker_data = BytesIO()
-        try:
-            resp = urllib.urlopen(url)
-
-            # check the mime-type first, you can't kang a .html file.
-            mime = resp.getheader('Content-Type')
-            if mime not in ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/x-tgsticker']:
-                msg.reply_text("I can only kang images m8.")
-                return
-
-            # check if it's an animated sticker type
-            if mime == "application/x-tgsticker":
-                is_animated = True
-            # write our sticker data to a buffer object
-            sticker_data.write(resp.read())
-            # move to the front of the buffer.
-            sticker_data.seek(0)
-        except ValueError:
-            # If they gave an invalid URL
-            msg.reply_text("Yea, that's not a URL I can download from.")
-            return
-        except HTTPError as e:
-            # if we're not allowed there for some reason
-            msg.reply_text(f"Error downloading the file: {e.code} {e.msg}")
-            return
-
+    # Find an available pack & add the sticker to the pack; create a new pack if needed
+    # Would be a good idea to cache the number instead of searching it every single time...
+    kang_lim = 120
+    st_in = m.reply_to_message.sticker 
+    st_type = "norm"
+    is_anim = is_vid = False
+    if st_in:
+        if st_in.is_animated:
+            st_type = "ani"
+            kang_lim = 50
+            is_anim = True
+        elif st_in.is_video:
+            st_type = "vid"
+            kang_lim = 50
+            is_vid = True
+    elif m.reply_to_message.document:
+        if m.reply_to_message.document.mime_type in ["application/x-bad-tgsticker", "application/x-tgsticker"]:
+            st_type = "ani"
+            kang_lim = 50
+            is_anim = True
+        elif m.reply_to_message.document.mime_type == "video/webm":
+            st_type = "vid"
+            kang_lim = 50
+            is_vid = True
+    elif m.reply_to_message.video or m.reply_to_message.animation or (m.reply_to_message.document and m.reply_to_message.document.mime_type.split("/")[0] == "video"):
+        st_type = "vid"
+        kang_lim = 50
+        is_vid = True
     packnum = 0
+    limit = 0
+    volume = 0
     packname_found = False
-    invalid = False
-
-    # now determine the pack name we should use by default
-    if is_animated:
-        packname = f"animated_{user.id}_by_{context.bot.username}"
-        max_stickers = 50
-    elif is_video:
-        packname = f"vid_{user.id}_by_{context.bot.username}"
-        max_stickers = 50
-    else:
-        packname = f"a{user.id}_by_{context.bot.username}"
-        max_stickers = 120
-
-    # Find if the pack is full already
-    while not packname_found:
-        try:
-            stickerset = context.bot.get_sticker_set(packname)
-            if len(stickerset.stickers) >= max_stickers:
+    
+    try:
+        while not packname_found:
+            packname = f"CE{str(m.from_user.id)}{st_type}{packnum}_by_{Config.BOT_USERNAME}"
+            kangpack = f"{('@'+m.from_user.username) if m.from_user.username else m.from_user.first_name[:10]} {st_type} {('vOl '+str(volume)) if volume else ''} by @{Config.BOT_USERNAME}"
+            if limit >= 50: # To prevent this loop from running forever
+                await m.reply_text("Failed to kang\nMay be you have made more than 50 sticker packs with me try deleting some")
+                return
+            sticker_set = await get_sticker_set_by_name(c,packname)
+            if not sticker_set:
+                sticker_set = await create_sticker_set(
+                    client=c,
+                    owner=m.from_user.id,
+                    title=kangpack,
+                    short_name=packname,
+                    stickers=[sticker],
+                    animated=is_anim,
+                    video=is_vid
+                )
+            elif sticker_set.set.count >= kang_lim:
                 packnum += 1
-                if is_animated:
-                    packname = f"animated{packnum}_{user.id}_by_{context.bot.username}"
-                elif is_video:
-                    packname = f"vid{packnum}_{user.id}_by_{context.bot.username}"
-                else:
-                    packname = f"a{packnum}_{user.id}_by_{context.bot.username}"
+                limit += 1
+                volume += 1
+                continue
             else:
-                packname_found = True
-        except TelegramError as e:
-            if e.message == "Stickerset_invalid":
-                packname_found = True
-                # we will need to create the sticker pack
-                invalid = True
-
-    # if the image isn't animated, ensure it's the right size/format with PIL
-    if not is_animated and not is_video:
-        # handle non-animated stickers.
-        try:
-            im = Image.open(sticker_data)
-            if (im.width and im.height) < 512:
-                size1 = im.width
-                size2 = im.height
-                if size1 > size2:
-                    scale = 512 / size1
-                    size1new = 512
-                    size2new = size2 * scale
-                else:
-                    scale = 512 / size2
-                    size1new = size1 * scale
-                    size2new = 512
-                size1new = math.floor(size1new)
-                size2new = math.floor(size2new)
-                sizenew = (size1new, size2new)
-                im = im.resize(sizenew)
-            else:
-                maxsize = (512, 512)
-                im.thumbnail(maxsize)
-            # Saved the resized sticker in memory
-            sticker_data = BytesIO()
-            im.save(sticker_data, 'PNG')
-            # seek to start of the image data
-            sticker_data.seek(0)
-        except OSError as e:
-            msg.reply_text("I can only steal images m8.")
-            return
-
-    # actually add the damn sticker to the pack, animated or not.
-    try:
-        # Add the sticker to the pack if it doesn't exist already
-        if invalid:
-            # Since Stickerset_invalid will also try to create a pack we might as
-            # well just reuse that code and avoid typing it all again.
-            raise TelegramError("Stickerset_invalid")
-        context.bot.add_sticker_to_set(
-            user_id=user.id,
-            name=packname,
-                tgs_sticker = sticker_data if is_animated else None,
-                webm_sticker = sticker_data if is_video else None,
-                png_sticker = sticker_data if not is_animated and not is_video else None,
-            emojis=sticker_emoji,
+                try:
+                    await add_sticker_to_set(c,sticker_set,sticker)
+                except StickerEmojiInvalid:
+                    return await msg.edit("[ERROR]: INVALID_EMOJI_IN_ARGUMENT")
+            limit += 1
+            packname_found = True
+        kb = IKM(
+            [
+                [
+                    IKB("➕ Add Pack ➕",url=f"t.me/addstickers/{packname}")
+                ]
+            ]
         )
-        msg.reply_text(
-            f"Sticker successfully added to [pack](t.me/addstickers/{packname})"
-            + f"\nEmoji is: {sticker_emoji}",
-            parse_mode=ParseMode.MARKDOWN,
+        await msg.delete()
+        await m.reply_text(
+            f"Kanged the sticker\nPack name: `{kangpack}`\nEmoji: {sticker_emoji}",
+            reply_markup=kb
         )
-    except TelegramError as e:
-        if e.message == "Stickerset_invalid":
-            # if we need to make a sticker pack, make one and make this the
-            # first sticker in the pack.
-            makepack_internal(
-                update,
-                context,
-                msg,
-                user,
-                sticker_emoji,
-                packname,
-                packnum,
-                tgs_sticker=sticker_data if is_animated else None,
-                webm_sticker=sticker_data if is_video else None,
-                png_sticker=sticker_data if not is_animated and not is_video else None,
-            )
-        elif e.message == "Stickers_too_much":
-            msg.reply_text("Max packsize reached. Press F to pay respecc.")
-        elif e.message == "Invalid sticker emojis":
-            msg.reply_text("I can't kang with that emoji!")
-        elif e.message == "Sticker_video_nowebm":
-            msg.reply_text(
-                "This media format isn't supported, I need it in a webm format, "
-                "[see this guide](https://core.telegram.org/stickers/webm-vp9-encoding).",
-                parse_mode=ParseMode.MARKDOWN,
-                disable_web_page_preview = True,
-            )
-        elif e.message == "Internal Server Error: sticker set not found (500)":
-            msg.reply_text(
-                f"Sticker successfully added to [pack](t.me/addstickers/{packname})\n"
-                + f"Emoji is: {sticker_emoji}", parse_mode=ParseMode.MARKDOWN
-            )
-        else:
-            msg.reply_text(f"Oops! looks like something happened that shouldn't happen! ({e.message})")
-            raise
-
-def makepack_internal(
-    update,
-    context,
-    msg,
-    user,
-    emoji,
-    packname,
-    packnum,
-    png_sticker=None,
-    webm_sticker=None,
-    tgs_sticker=None,
-):
-    name = user.first_name[:50]
-    try:
-        extra_version = ""
-        if packnum > 0:
-            extra_version = f" {packnum}"
-        success = context.bot.create_new_sticker_set(
-            user.id,
-            packname,
-            f"{name}s {'animated ' if tgs_sticker else 'video ' if webm_sticker else ''}kang pack{extra_version}",
-            tgs_sticker=tgs_sticker or None,
-            webm_sticker=webm_sticker or None,
-            png_sticker=png_sticker or None,
-            emojis=emoji,
+    except (PeerIdInvalid, UserIsBlocked):
+        keyboard = IKM(
+            [[IKB("Start me first", url=f"t.me/{Config.BOT_USERNAME}")]]
         )
-
-    except TelegramError as e:
-        print(e)
-        if e.message == 'Sticker set name is already occupied':
-            msg.reply_text(
-                'Your pack can be found [here](t.me/addstickers/%s)'
-                % packname,
-                parse_mode=ParseMode.MARKDOWN,
-            )
-
-            return
-        elif e.message in ('Peer_id_invalid', 'bot was blocked by the user'):
-            msg.reply_text(
-                'Contact me in PM first.',
-                reply_markup=InlineKeyboardMarkup(
-                    [
-                        [
-                            InlineKeyboardButton(
-                                text='Start',
-                                url=f't.me/{context.bot.username}',
-                            )
-                        ]
-                    ]
-                ),
-            )
-
-            return
-        elif (
-            e.message
-            == 'Internal Server Error: created sticker set not found (500)'
-        ):
-            success = True
-        elif e.message == 'Sticker_video_nowebm':
-            msg.reply_text(
-                "This media format isn't supported, I need it in a webm format, "
-                "[see this guide](https://core.telegram.org/stickers/webm-vp9-encoding).",
-                parse_mode=ParseMode.MARKDOWN,
-                disable_web_page_preview = True,
-            )
-            return
-        else:
-            success = False
-    if success:
-        msg.reply_text(
-            f"Sticker pack successfully created. Get it [here](t.me/addstickers/{packname})",
-            parse_mode=ParseMode.MARKDOWN,
+        await msg.delete()
+        await m.reply_text(
+            "You Need To Start A Private Chat With Me.",
+            reply_markup=keyboard,
         )
+    except StickerPngNopng:
+        await msg.delete()
+        await m.reply_text(
+            "Stickers must be png files but the provided image was not a png"
+        )
+    except StickerPngDimensions:
+        await msg.delete()
+        await m.reply_text("The sticker png dimensions are invalid.")
+    except StickerTgsNotgs:
+        await msg.delete()
+        await m.reply_text("Sticker must be tgs file but the provided file was not tgs")
+    except StickerVideoNowebm:
+        await msg.delete()
+        await m.reply_text("Sticker must be webm file but the provided file was not webm")
+    except Exception as e:
+        await msg.delete()
+        await m.reply_text(f"Error occured\n{e}")
+        LOGGER.error(e)
+        LOGGER.error(format_exc())
+    return
+
+
+@Gojo.on_message(command(["mmfb","mmfw","mmf"]))
+async def memify_it(c: Gojo, m: Message):
+    if not m.reply_to_message:
+        await m.reply_text("Invalid type.")
+        return
+    rep_to = m.reply_to_message
+    if not (rep_to.sticker or rep_to.photo or (rep_to.document and "image" in rep_to.document.mime_type.split("/"))):
+        await m.reply_text("I only support memifying of normal sticker and photos for now")
+        return
+    if rep_to.sticker and (rep_to.sticker.is_animated or rep_to.sticker.is_video):
+        await m.reply_text("I only support memifying of normal sticker and photos for now")
+        return
+    kb = IKM(
+        [
+            [
+                IKB("Join for memes",url="https://t.me/memesofdank")
+            ]
+        ]
+    )
+    if len(m.command) == 1:
+        await m.reply_text("Give me something to write")
+        return
+    filll = m.command[0][-1]
+    if filll == "b":
+        fiil = "black"
     else:
-        msg.reply_text("Failed to create sticker pack. Possibly due to blek mejik.")
+        fiil = "white"
+    x = await m.reply_text("Memifying...")
+    meme = m.text.split(None,1)[1].strip()
+    name = f"@memesofdank_{m.id}.png"
+    path = await rep_to.download(name)
+    is_sticker = False
+    if rep_to.sticker:
+        is_sticker = True
+    output = await draw_meme(path,meme,is_sticker,fiil)
+    await x.delete()
+    xNx = await m.reply_photo(output[0],reply_markup=kb)
+    await xNx.reply_sticker(output[1],reply_markup=kb)
+    try:
+        os.remove(output[0])
+        os.remove(output[1])
+    except Exception as e:
+        LOGGER.error(e)
+        LOGGER.error(format_exc())
+    return
+
+@Gojo.on_message(command(["getsticker","getst"]))
+async def get_sticker_from_file(c: Gojo, m: Message):
+    Caption = f"Converted by:\n@{Config.BOT_USERNAME}"
+    repl = m.reply_to_message
+    if not repl:
+        await m.reply_text("Reply to a sticker or file")
+        return
+    to_vid = False
+    if not (repl.animation or repl.video or repl.sticker or repl.photo or (repl.document and repl.document.mime_type.split("/")[0] in ["image","video"])):
+        await m.reply_text("I only support conversion of plain stickers, images, videos and animation for now")
+        return
+    if repl.animation or repl.video or (repl.document and repl.document.mime_type.split("/")[0]=="video"):
+        to_vid = True
+    x = await m.reply_text("Converting...")
+    if repl.sticker:
+        if repl.sticker.is_animated:
+            upp = await repl.download()
+            up = tgs_to_gif(upp,True)
+            await x.delete()
+            await m.reply_animation(up,caption=Caption)
+            os.remove(up)
+            return
+        elif repl.sticker.is_video:
+            upp = await repl.download()
+            up = await webm_to_gif(upp)
+            await x.delete()
+            await m.reply_animation(up,caption=Caption)
+            os.remove(up)
+            return
+        else:
+            upp = await repl.download()
+            up = toimage(upp,is_direc=True)
+            await x.delete()
+            await m.reply_photo(up,caption=Caption)
+            os.remove(up)
+            return
+    elif repl.photo:
+        upp = await repl.download()
+        up = tosticker(upp,is_direc=True)
+        await x.delete()
+        await m.reply_sticker(up)
+        os.remove(up)
+        return
+    
+    elif to_vid:
+        up = await Vsticker(c,repl)
+        await x.delete()
+        await m.reply_sticker(up)
+        os.remove(up)
+        return
+
+        
+__PLUGIN__ = "sticker"
+__alt_name__ = [
+    "sticker",
+    "kang"
+]
+__HELP__ = """
+**User Commands:**
+• /kang (/steal) <emoji>: Reply to a sticker or any supported media
+• /stickerinfo (/stinfo) : Reply to any sticker to get it's info
+• /getsticker (/getst) : Get sticker as photo, gif or vice versa.
+• /stickerid (/stid) : Reply to any sticker to get it's id
+• /mmf <your text>: Reply to a normal sticker or a photo or video file to memify it. If you want to right text at bottom use `;right your message`
+    ■ For e.g. 
+    ○ /mmf Hello freinds : this will add text to the top
+    ○ /mmf Hello ; freinds : this will add Hello to the top and freinds at the bottom
+    ○ /mmf ; Hello friends : this will add text at the bottom
+    ○ /mmfb <text>: To fill text with black colour
+    ○ /mmfw or /mmf <text>: To fill it with white colour
+
+**Note**
+mmf and getsticker only support photo and normal stickers for now.
+
+"""
